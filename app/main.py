@@ -8,6 +8,8 @@ import time
 import os
 import instructor
 from pydantic import BaseModel, Field
+import subprocess
+from pymacnotifier import MacNotifier
 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 groq_client = instructor.from_provider(
@@ -17,32 +19,43 @@ groq_client = instructor.from_provider(
 monitor = ClipboardMonitor()
 monitor.start(log=True)
 
+# Initialize the Mac notifier with a default title
+notifier = MacNotifier(default_title="Tango")
 
 
 class CopyTextToClipboardResponse(BaseModel):
     """Structured response containing the content to be copied to clipboard."""
+
     content_for_clipboard: str
+
 
 class ActionType(Enum):
     """Types of actions the assistant can take."""
+
     COPY_TEXT_TO_CLIPBOARD = "COPY_TEXT_TO_CLIPBOARD"
     NO_ACTION = "NO_ACTION"
     MAKE_MEME = "MAKE_MEME"
 
+
 class AssistantResponse(BaseModel):
-    """Assistant response indicating whether to act and the action details. Follow the user's instructions to do this.
-    
-    
-    """
+    """Assistant response indicating whether to act and the action details. Follow the user's instructions to do this."""
+
     thinking: str
     actionType: ActionType
 
-    message: str = Field(..., description="A short message to the user about what action was taken. Be extremely concise.")
+    message: str = Field(
+        ...,
+        description="A short message to the user about what action was taken. Be extremely concise.",
+    )
     content_for_clipboard: Optional[str] = None
     meme_top_text: Optional[str] = Field(None, description="Top text for the meme")
-    meme_bottom_text: Optional[str] = Field(None, description="Bottom text for the meme")
+    meme_bottom_text: Optional[str] = Field(
+        None, description="Bottom text for the meme"
+    )
+
 
 hotword = "tango"
+
 
 def on_hotword_detected(text, audio):
     prompt = f"Voice Command: {text}"
@@ -65,36 +78,41 @@ def on_hotword_detected(text, audio):
     # response = chat_completion.choices[0].message.content
     print(f"Full Groq response: {chat_completion}")
     if chat_completion.actionType == ActionType.NO_ACTION:
+        if chat_completion.message:
+            notifier.simple_notify(message=chat_completion.message)
         print("No action needed.")
         return
-    
-    if chat_completion.actionType == ActionType.COPY_TEXT_TO_CLIPBOARD and chat_completion.content_for_clipboard:
+
+    if (
+        chat_completion.actionType == ActionType.COPY_TEXT_TO_CLIPBOARD
+        and chat_completion.content_for_clipboard
+    ):
         response = chat_completion.content_for_clipboard
         print(f"Groq response: {response}")
         # use instructor to remove fluff so response is only the text to copy to clipboard
         monitor.copy_text(response)
         print("Clipboard updated with Groq response.")
+        notifier.simple_notify(message=chat_completion.message)
         return
 
     if chat_completion.actionType == ActionType.MAKE_MEME:
         # Handle meme creation
         print("Creating meme...")
         data_type, value = monitor.get_last()
-        if data_type is None or value is None or data_type != 'image':
+        if data_type is None or value is None or data_type != "image":
             print("No image found in clipboard to create a meme.")
             return
         from meme import make_meme
+
         meme_image = make_meme(
             value,
             upper_text=chat_completion.meme_top_text or "",
-            lower_text=chat_completion.meme_bottom_text or ""
+            lower_text=chat_completion.meme_bottom_text or "",
         )
         monitor.copy_image(meme_image)
         print("Meme created and copied to clipboard.")
+        notifier.simple_notify(message=chat_completion.message)
         return
-
-
-
 
 
 if __name__ == "__main__":
