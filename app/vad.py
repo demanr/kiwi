@@ -11,9 +11,9 @@ import webrtcvad
 # ---------- Config ----------
 SAMPLE_RATE = 16000
 FRAME_DURATION_MS = 30
-VAD_MODE = 3
-START_CONSECUTIVE = 3
-END_CONSECUTIVE = 10
+VAD_MODE = 2  # Less aggressive mode (0=least aggressive, 3=most aggressive)
+START_CONSECUTIVE = 3  # 90ms to start speech detection (3 * 30ms)
+END_CONSECUTIVE = 10   # 900ms of silence before ending speech (30 * 30ms)
 DEVICE = None
 BLOCK_SIZE = 1024
 # ----------------------------
