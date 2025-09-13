@@ -5,4 +5,8 @@ pvporcupine==3.05
 sounddevice==0.5.2
 dotenv==0.9.9
 python-dotenv==1.1.1
-
+audioop-lts==0.2.2
+speechrecognition==3.14.3
+standard-aifc==3.13.0
+standard-chunk==3.13.0
+typing-extensions==4.15.0
