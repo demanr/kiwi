@@ -3,3 +3,7 @@ groq
 numpy
 sounddevice
 webrtcvad
+setuptools
+pyobjc
+Pillow
+instructor
