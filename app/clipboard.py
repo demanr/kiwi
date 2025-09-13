@@ -1,4 +1,9 @@
 # mac_clipboard_monitor.py
+import platform
+# TODO: Add support for Windows and Linux
+if platform.system() != "Darwin":
+    raise ImportError("This module only supports macOS")
+
 import time
 import io
 import AppKit
