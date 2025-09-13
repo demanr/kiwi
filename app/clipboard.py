@@ -1,4 +1,3 @@
-# mac_clipboard_monitor.py
 import platform
 # TODO: Add support for Windows and Linux
 if platform.system() != "Darwin":
@@ -114,14 +113,58 @@ class ClipboardMonitor:
     def get_last(self):
         """Return the last clipboard item as a tuple (type, data)."""
         return self.last_item
+    
+    def copy_text(self, text, rich_text=None):
+        """
+        Copy text to clipboard. If rich_text bytes are provided, set both plain text and rich text (RTF).
+        Args:
+            text (str): Plain text to copy to clipboard.
+            rich_text (bytes or str, optional): RTF data to copy for rich text formatting.
+        """
+        pb = self.pb
+        pb.clearContents()
+        if rich_text is not None:
+            # Declare both plain text and RTF types
+            types = [AppKit.NSPasteboardTypeString, AppKit.NSPasteboardTypeRTF]
+            pb.declareTypes_owner_(types, None)
+            pb.setString_forType_(text, AppKit.NSPasteboardTypeString)
+            data = rich_text if isinstance(rich_text, (bytes, bytearray)) else rich_text.encode('utf-8')
+            nsdata = AppKit.NSData.alloc().initWithBytes_length_(data, len(data))
+            pb.setData_forType_(nsdata, AppKit.NSPasteboardTypeRTF)
+        else:
+            pb.setString_forType_(text, AppKit.NSPasteboardTypeString)
+
+    def copy_image(self, img):
+        """
+        Copy a PIL.Image to clipboard as an image (PNG).
+        Args:
+            img (PIL.Image.Image): Image to copy to clipboard.
+        """
+        pb = self.pb
+        pb.clearContents()
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        data = buf.getvalue()
+        nsdata = AppKit.NSData.alloc().initWithBytes_length_(data, len(data))
+        nsimage = AppKit.NSImage.alloc().initWithData_(nsdata)
+        pb.writeObjects_([nsimage])
+
 
 if __name__ == '__main__':
     monitor = ClipboardMonitor()
     monitor.start(log=True)
     print("Monitoring macOS clipboard. Press Ctrl+C to stop.")
+    last = None
     try:
         while True:
+            # see if clipboard changed
+            if monitor.get_last() != last:
+                last = monitor.get_last()
+                print("Clipboard changed:", last)
             time.sleep(1)
     except KeyboardInterrupt:
         monitor.stop()
         print("Stopped by user")
+
+
+    
