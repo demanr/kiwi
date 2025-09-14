@@ -1,11 +1,13 @@
 # In main, start a hotword listener. if it hears tango, call a function that prints "Heard tango"
+from enum import Enum
 from groq import Groq
 from audio import HotwordListener
 from clipboard import ClipboardMonitor
+from typing import Optional
 import time
 import os
 import instructor
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 groq_client = instructor.from_provider(
@@ -16,11 +18,31 @@ monitor = ClipboardMonitor()
 monitor.start(log=True)
 
 
-class ClipboardContent(BaseModel):
-    """Structured response containing only the content to be copied to clipboard."""
 
+class CopyTextToClipboardResponse(BaseModel):
+    """Structured response containing the content to be copied to clipboard."""
     content_for_clipboard: str
 
+class ActionType(Enum):
+    """Types of actions the assistant can take."""
+    COPY_TEXT_TO_CLIPBOARD = "COPY_TEXT_TO_CLIPBOARD"
+    NO_ACTION = "NO_ACTION"
+    MAKE_MEME = "MAKE_MEME"
+
+class AssistantResponse(BaseModel):
+    """Assistant response indicating whether to act and the action details. Follow the user's instructions to do this.
+    
+    
+    """
+    thinking: str
+    actionType: ActionType
+
+    message: str = Field(..., description="A short message to the user about what action was taken. Be extremely concise.")
+    content_for_clipboard: Optional[str] = None
+    meme_top_text: Optional[str] = Field(None, description="Top text for the meme")
+    meme_bottom_text: Optional[str] = Field(None, description="Bottom text for the meme")
+
+hotword = "tango"
 
 def on_hotword_detected(text, audio):
     prompt = f"Voice Command: {text}"
@@ -29,12 +51,12 @@ def on_hotword_detected(text, audio):
     prompt += f"{monitor.get_last()}"
 
     chat_completion = groq_client.chat.completions.create(
-        model="openai/gpt-oss-20b",  # or another available Groq model
-        response_model=ClipboardContent,
+        model="meta-llama/llama-4-scout-17b-16e-instruct",  # or another available Groq model
+        response_model=AssistantResponse,
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful assistant responding to voice commands managing someone's clipboard.",
+                "content": f"You are {hotword}, an assistant responding to voice commands managing someone's clipboard. You can copy text to clipboard or create memes from images in clipboard. Only respond with JSON in the specified format. If you cannot help, respond with NO_ACTION. Always follow the user's instructions carefully.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -42,17 +64,41 @@ def on_hotword_detected(text, audio):
 
     # response = chat_completion.choices[0].message.content
     print(f"Full Groq response: {chat_completion}")
-    response = chat_completion.content_for_clipboard
-    print(f"Groq response: {response}")
-    # use instructor to remove fluff so response is only the text to copy to clipboard
-    monitor.copy_text(response)
-    print("Clipboard updated with Groq response.")
+    if chat_completion.actionType == ActionType.NO_ACTION:
+        print("No action needed.")
+        return
+    
+    if chat_completion.actionType == ActionType.COPY_TEXT_TO_CLIPBOARD and chat_completion.content_for_clipboard:
+        response = chat_completion.content_for_clipboard
+        print(f"Groq response: {response}")
+        # use instructor to remove fluff so response is only the text to copy to clipboard
+        monitor.copy_text(response)
+        print("Clipboard updated with Groq response.")
+        return
 
-    # Here you can add more actions, e.g., interact with clipboard or other functionalities
+    if chat_completion.actionType == ActionType.MAKE_MEME:
+        # Handle meme creation
+        print("Creating meme...")
+        data_type, value = monitor.get_last()
+        if data_type is None or value is None or data_type != 'image':
+            print("No image found in clipboard to create a meme.")
+            return
+        from meme import make_meme
+        meme_image = make_meme(
+            value,
+            upper_text=chat_completion.meme_top_text or "",
+            lower_text=chat_completion.meme_bottom_text or ""
+        )
+        monitor.copy_image(meme_image)
+        print("Meme created and copied to clipboard.")
+        return
+
+
+
 
 
 if __name__ == "__main__":
-    listener = HotwordListener("tango", on_hotword_detected)
+    listener = HotwordListener(hotword, on_hotword_detected)
     listener.start(background=True)
 
     # Keep the main thread alive to allow background listening
