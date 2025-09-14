@@ -13,7 +13,7 @@ from pymacnotifier import MacNotifier
 
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 groq_client = instructor.from_provider(
-    "groq/gpt-oss-20b", api_key=os.getenv("GROQ_API_KEY")
+    "groq/gpt-oss-120b", api_key=os.getenv("GROQ_API_KEY")
 )
 
 monitor = ClipboardMonitor()
@@ -33,6 +33,7 @@ class ActionType(Enum):
     """Types of actions the assistant can take."""
 
     COPY_TEXT_TO_CLIPBOARD = "COPY_TEXT_TO_CLIPBOARD"
+    SHORT_REPLY = "SHORT_REPLY"
     NO_ACTION = "NO_ACTION"
     MAKE_MEME = "MAKE_MEME"
 
@@ -64,12 +65,12 @@ def on_hotword_detected(text, audio):
     prompt += f"{monitor.get_last()}"
 
     chat_completion = groq_client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",  # or another available Groq model
+        model="qwen/qwen3-32b",  # or another available Groq model
         response_model=AssistantResponse,
         messages=[
             {
                 "role": "system",
-                "content": f"You are {hotword}, an assistant responding to voice commands managing someone's clipboard. You can copy text to clipboard or create memes from images in clipboard. Only respond with JSON in the specified format. If you cannot help, respond with NO_ACTION. Always follow the user's instructions carefully.",
+                "content": f"You are {hotword}, an assistant responding to voice commands. You can copy text to clipboard or create memes from images in clipboard. Only respond with JSON in the specified format. Always follow the user's instructions carefully and try to respond to the best of your abilties.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -112,6 +113,11 @@ def on_hotword_detected(text, audio):
         monitor.copy_image(meme_image)
         print("Meme created and copied to clipboard.")
         notifier.simple_notify(message=chat_completion.message)
+        return
+
+    if chat_completion.actionType == ActionType.SHORT_REPLY:
+        if chat_completion.message:
+            notifier.simple_notify(message=chat_completion.message)
         return
 
 
