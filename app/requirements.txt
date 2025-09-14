@@ -7,3 +7,6 @@ setuptools
 pyobjc
 Pillow
 instructor
+chromadb
+
+# Note: sqlite3 is used for persistent memory but is included in Python standard library
