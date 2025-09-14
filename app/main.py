@@ -45,7 +45,7 @@ class AssistantResponse(BaseModel):
 
     message: str = Field(
         ...,
-        description="A short message to the user about what action was taken. Be extremely concise.",
+        description="A short message to the user about what action was taken. Be extremely concise, since there is a 50 character limit.",
     )
     content_for_clipboard: Optional[str] = None
     meme_top_text: Optional[str] = Field(None, description="Top text for the meme")

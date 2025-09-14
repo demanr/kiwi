@@ -51,6 +51,7 @@ class MacNotifier:
         url: Optional[str] = None,
         group: Optional[str] = None,
         timeout: Optional[int] = None,
+        high_priority: bool = True,
     ) -> bool:
         """
         Send a notification to macOS Notification Center.
@@ -63,6 +64,7 @@ class MacNotifier:
             url: URL to open when notification is clicked
             group: Group ID for replacing notifications
             timeout: Timeout in seconds (only works with certain versions)
+            high_priority: If True, ignores Do Not Disturb and uses system sender
 
         Returns:
             bool: True if notification was sent successfully
@@ -89,6 +91,13 @@ class MacNotifier:
         if timeout:
             cmd.extend(["-timeout", str(timeout)])
 
+        # High priority settings to ensure notifications always show
+        if high_priority:
+            # Ignore Do Not Disturb mode
+            cmd.extend(["-ignoreDnD"])
+            # Use system sender for higher priority appearance
+            cmd.extend(["-sender", "com.apple.systempreferences"])
+
         try:
             result = subprocess.run(cmd, check=True, capture_output=True)
             return True
@@ -97,7 +106,7 @@ class MacNotifier:
 
     def simple_notify(self, message: str, title: Optional[str] = None) -> bool:
         """
-        Send a simple notification with just message and title.
+        Send a simple high-priority notification with just message and title.
 
         Args:
             message: The notification message
@@ -107,5 +116,8 @@ class MacNotifier:
             bool: True if notification was sent successfully
         """
         return self.notify(
-            message=message, title=title, sound=NotificationSound.DEFAULT
+            message=message,
+            title=title,
+            sound=NotificationSound.DEFAULT,
+            high_priority=True,
         )
