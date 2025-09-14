@@ -51,15 +51,17 @@ def create_client():
             print("Falling back to Groq...")
             # Fall back to Groq
     
+    # Initialize with API key
+    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
     # Default to Groq
-    client = instructor.from_provider(
-        "groq/llama-3.3-70b-versatile", 
-        api_key=os.getenv("GROQ_API_KEY")
+    client = instructor.from_groq(
+        client
     )
     return {
         "instructor": client,
         "native": None,
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "provider": "groq"
     }
 
@@ -221,7 +223,7 @@ OTHER ACTIONS:
 - SHORT_REPLY: Just notify user with a message. Their clipboard remains unchanged.
 
 Use the current date/time to understand when things happened relative to now. Only respond with valid JSON matching the AssistantResponse schema.
-
+If the user asks you to convert data formats, DO IT IN FULL DO NOT TRUNCATE ANYTHING. THERE IS NO CHARACTER LIMIT FOR COPIED CONTENT.
 Remember that you are primariy interacting via short messages and by assisting the user with their clipboard content. There might be some noisey text from the voice recognition, so focus on the core intent of the command.
 """,
                 },
