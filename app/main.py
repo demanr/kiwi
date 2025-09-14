@@ -36,6 +36,7 @@ class ActionType(Enum):
     SHORT_REPLY = "SHORT_REPLY"
     NO_ACTION = "NO_ACTION"
     MAKE_MEME = "MAKE_MEME"
+    REMOVE_BACKGROUND = "REMOVE_BACKGROUND"
 
 
 class AssistantResponse(BaseModel):
@@ -70,7 +71,7 @@ def on_hotword_detected(text, audio):
         messages=[
             {
                 "role": "system",
-                "content": f"You are {hotword}, an assistant responding to voice commands. You can copy text to clipboard or create memes from images in clipboard. Only respond with JSON in the specified format. Always follow the user's instructions carefully and try to respond to the best of your abilties.",
+                "content": f"You are {hotword}, an assistant responding to voice commands. You can copy text to clipboard, create memes from images in clipboard, or remove backgrounds from images in clipboard. Only respond with JSON in the specified format. Always follow the user's instructions carefully and try to respond to the best of your abilties.",
             },
             {"role": "user", "content": prompt},
         ],
@@ -112,6 +113,22 @@ def on_hotword_detected(text, audio):
         )
         monitor.copy_image(meme_image)
         print("Meme created and copied to clipboard.")
+        notifier.simple_notify(message=chat_completion.message)
+        return
+
+    if chat_completion.actionType == ActionType.REMOVE_BACKGROUND:
+        # Handle background removal
+        print("Removing background...")
+        data_type, value = monitor.get_last()
+        if data_type is None or value is None or data_type != "image":
+            print("No image found in clipboard to remove background from.")
+            notifier.simple_notify(message="No image found in clipboard")
+            return
+        from bg_remove import remove_background
+
+        bg_removed_image = remove_background(value)
+        monitor.copy_image(bg_removed_image)
+        print("Background removed and copied to clipboard.")
         notifier.simple_notify(message=chat_completion.message)
         return
 

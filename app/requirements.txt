@@ -5,5 +5,8 @@ sounddevice
 webrtcvad
 setuptools
 pyobjc
+pyobjc-framework-Vision
+pyobjc-framework-CoreImage
 Pillow
 instructor
+rembg
