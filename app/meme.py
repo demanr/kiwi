@@ -4,23 +4,57 @@ def make_meme(img: Image.Image, upper_text: str = "", lower_text: str = "") -> I
     """
     Creates an Imgur-style meme from a Pillow image with upper and lower text.
     Text is white, bold, centered, with a black outline.
+    Text automatically scales down if too long to fit horizontally.
     """
     # Work on a copy of the image
     image = img.convert("RGB").copy()
     draw = ImageDraw.Draw(image)
 
-    # Pick a font size relative to image width
-    font_size = int(image.width / 10)
-    try:
-        font = ImageFont.truetype("Impact.ttf", font_size)  # Classic meme font
-    except:
-        font = ImageFont.truetype("arial.ttf", font_size)   # Fallback
+    def get_optimal_font_size(text: str, max_width: int, initial_font_size: int) -> tuple[ImageFont.FreeTypeFont, int]:
+        """
+        Find the optimal font size that fits the text within the given width.
+        Returns the font object and the final font size.
+        """
+        current_font_size = initial_font_size
+        min_font_size = 12  # Minimum readable font size
+        
+        while current_font_size >= min_font_size:
+            try:
+                font = ImageFont.truetype("Impact.ttf", current_font_size)
+            except:
+                font = ImageFont.truetype("arial.ttf", current_font_size)
+            
+            # Check if text fits within max_width
+            bbox = draw.textbbox((0, 0), text.upper(), font=font)
+            text_width = bbox[2] - bbox[0]
+            
+            if text_width <= max_width:
+                return font, current_font_size
+            
+            # Reduce font size by 5% each iteration
+            current_font_size = int(current_font_size * 0.95)
+        
+        # If we reach here, use minimum font size
+        try:
+            font = ImageFont.truetype("Impact.ttf", min_font_size)
+        except:
+            font = ImageFont.truetype("arial.ttf", min_font_size)
+        return font, min_font_size
 
     def draw_centered_text(text: str, y: int):
         # Uppercase for meme style
         text = text.upper()
+        
+        # Calculate max width (leave 10% margin on each side)
+        max_text_width = int(image.width * 0.8)
+        
+        # Get initial font size relative to image width
+        initial_font_size = int(image.width / 10)
+        
+        # Get optimal font and size
+        font, font_size = get_optimal_font_size(text, max_text_width, initial_font_size)
 
-        # Text size
+        # Text size with final font
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
@@ -39,6 +73,8 @@ def make_meme(img: Image.Image, upper_text: str = "", lower_text: str = "") -> I
 
         # Draw main text
         draw.text((x, y), text, font=font, fill="white")
+        
+        return text_height  # Return height for positioning calculations
 
     # Upper text
     if upper_text:
@@ -46,7 +82,9 @@ def make_meme(img: Image.Image, upper_text: str = "", lower_text: str = "") -> I
 
     # Lower text
     if lower_text:
-        draw_centered_text(lower_text, image.height - font_size - 10)
+        # Calculate position based on a standard font size for consistent spacing
+        standard_font_size = int(image.width / 10)
+        draw_centered_text(lower_text, image.height - standard_font_size - 10)
 
     return image
 
