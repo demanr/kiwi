@@ -1,4 +1,5 @@
 import subprocess
+import os
 from typing import Optional
 from enum import Enum
 
@@ -31,6 +32,23 @@ class MacNotifier:
         self.default_title = default_title
         self._check_terminal_notifier()
 
+        # Set up paths to icons
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.emojis_dir = os.path.join(current_dir, "assets", "emojis")
+
+        # Define available emotions
+        self.available_emotions = {
+            "angry",
+            "annoyed",
+            "excited",
+            "happy",
+            "love",
+            "sad",
+            "surprised",
+            "thinking",
+            "winking",
+        }
+
     def _check_terminal_notifier(self):
         """Check if terminal-notifier is installed."""
         try:
@@ -42,6 +60,24 @@ class MacNotifier:
                 "terminal-notifier not found. Install with: brew install terminal-notifier"
             )
 
+    def _get_emoji_path(self, emotion: Optional[str] = None) -> str:
+        """
+        Get the path to the emoji icon based on emotion.
+
+        Args:
+            emotion: The emotion name (e.g., 'happy', 'sad', 'angry')
+
+        Returns:
+            str: Path to the emoji file, falls back to default logo if emotion not found
+        """
+        if emotion and emotion.lower() in self.available_emotions:
+            emoji_path = os.path.join(self.emojis_dir, f"{emotion.lower()}.svg")
+            if os.path.exists(emoji_path):
+                return emoji_path
+
+        # Fallback to happy emoji logo
+        return os.path.join(self.emojis_dir, "happy.svg")
+
     def notify(
         self,
         message: str,
@@ -52,6 +88,7 @@ class MacNotifier:
         group: Optional[str] = None,
         timeout: Optional[int] = None,
         high_priority: bool = True,
+        emotion: Optional[str] = None,
     ) -> bool:
         """
         Send a notification to macOS Notification Center.
@@ -65,6 +102,7 @@ class MacNotifier:
             group: Group ID for replacing notifications
             timeout: Timeout in seconds (only works with certain versions)
             high_priority: If True, ignores Do Not Disturb and uses system sender
+            emotion: The emotion name for selecting appropriate emoji icon
 
         Returns:
             bool: True if notification was sent successfully
@@ -98,19 +136,27 @@ class MacNotifier:
             # Use system sender for higher priority appearance
             cmd.extend(["-sender", "com.apple.systempreferences"])
 
+        # Add the appropriate icon based on emotion
+        icon_path = self._get_emoji_path(emotion)
+        if os.path.exists(icon_path):
+            cmd.extend(["-appIcon", icon_path])
+
         try:
             result = subprocess.run(cmd, check=True, capture_output=True)
             return True
         except subprocess.CalledProcessError:
             return False
 
-    def simple_notify(self, message: str, title: Optional[str] = None) -> bool:
+    def simple_notify(
+        self, message: str, title: Optional[str] = None, emotion: Optional[str] = None
+    ) -> bool:
         """
         Send a simple high-priority notification with just message and title.
 
         Args:
             message: The notification message
             title: The notification title (uses default_title if not provided)
+            emotion: The emotion name for selecting appropriate emoji icon
 
         Returns:
             bool: True if notification was sent successfully
@@ -120,4 +166,14 @@ class MacNotifier:
             title=title,
             sound=NotificationSound.FUNK,
             high_priority=True,
+            emotion=emotion,
         )
+
+    def get_available_emotions(self) -> set:
+        """
+        Get the set of available emotion names.
+
+        Returns:
+            set: Available emotion names
+        """
+        return self.available_emotions.copy()

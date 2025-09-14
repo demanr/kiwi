@@ -48,6 +48,10 @@ class AssistantResponse(BaseModel):
         ...,
         description="A short message to the user about what action was taken. Be extremely concise, since there is a 50 character limit.",
     )
+    emoji: Optional[str] = Field(
+        None,
+        description="An optional emotion based on the message. The options are angry, annoyed, excited, happy, love, sad, surprised, thinking, winking. Always use an emoji that matches the tone of the message.",
+    )
     content_for_clipboard: Optional[str] = None
     meme_top_text: Optional[str] = Field(None, description="Top text for the meme")
     meme_bottom_text: Optional[str] = Field(
@@ -80,7 +84,9 @@ def on_hotword_detected(text, audio):
     print(f"Full Groq response: {chat_completion}")
     if chat_completion.actionType == ActionType.NO_ACTION:
         if chat_completion.message:
-            notifier.simple_notify(message=chat_completion.message)
+            notifier.simple_notify(
+                message=chat_completion.message, emotion=chat_completion.emoji
+            )
         print("No action needed.")
         return
 
@@ -93,7 +99,9 @@ def on_hotword_detected(text, audio):
         # use instructor to remove fluff so response is only the text to copy to clipboard
         monitor.copy_text(response)
         print("Clipboard updated with Groq response.")
-        notifier.simple_notify(message=chat_completion.message)
+        notifier.simple_notify(
+            message=chat_completion.message, emotion=chat_completion.emoji
+        )
         return
 
     if chat_completion.actionType == ActionType.MAKE_MEME:
@@ -112,12 +120,16 @@ def on_hotword_detected(text, audio):
         )
         monitor.copy_image(meme_image)
         print("Meme created and copied to clipboard.")
-        notifier.simple_notify(message=chat_completion.message)
+        notifier.simple_notify(
+            message=chat_completion.message, emotion=chat_completion.emoji
+        )
         return
 
     if chat_completion.actionType == ActionType.SHORT_REPLY:
         if chat_completion.message:
-            notifier.simple_notify(message=chat_completion.message)
+            notifier.simple_notify(
+                message=chat_completion.message, emotion=chat_completion.emoji
+            )
         return
 
 
