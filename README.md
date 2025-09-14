@@ -1,6 +1,10 @@
-# kiwi
+# Tango - What Siri should have been
 
 HTN 2025, making your clipboard a supertool
+
+Tango is an AI-powered macOS assistant that enhances your clipboard functionality. It can read and modify text, create memes, remove image backgrounds, and remember your preferences using persistent memory. Powered by LLMs, Tango provides a seamless experience that Siri could have been to help you with everyday tasks.
+
+Check out the demo videos: https://youtu.be/sK-WvZZubcc
 
 ## Setup
 
