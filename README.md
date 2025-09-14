@@ -11,6 +11,33 @@ The following environment variables are required:
 - `GROQ_API_KEY`: Your Groq API key (required if using Groq provider)
 - `GEMINI_API_KEY`: Your Google Gemini API key (required if using Gemini provider)
 - `MODEL_PROVIDER`: Choose the AI provider (`groq` or `gemini`, defaults to `groq`)
+- `ENABLE_MEMORY`: Enable memory functionality (`true` or `false`, defaults to `false`)
+
+### Memory Configuration
+
+Memory functionality is **disabled by default** for faster, simpler operation. You can enable it if you need persistent memory across sessions:
+
+```bash
+# Disable memory (default - faster and simpler)
+export ENABLE_MEMORY=false
+# or simply omit the variable
+
+# Enable memory (slower startup, but remembers interactions)
+export ENABLE_MEMORY=true
+```
+
+When memory is disabled:
+
+- Faster startup time
+- No ChromaDB dependencies
+- Simpler prompts focused on clipboard operations
+- Actions limited to: copy text, make memes, short replies
+
+When memory is enabled:
+
+- Full memory search and save capabilities
+- Remembers user preferences and past interactions
+- Additional actions: search memory, save to memory
 
 ### Model Provider Configuration
 
