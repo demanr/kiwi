@@ -3,7 +3,6 @@ from enum import Enum
 from groq import Groq
 from audio import HotwordListener
 from clipboard import ClipboardMonitor
-from chroma_memory import get_memory, search_memory_tool
 from typing import Optional
 import time
 import os
@@ -11,6 +10,16 @@ import instructor
 from pydantic import BaseModel, Field, field_validator
 import subprocess
 from pymacnotifier import MacNotifier
+
+# Memory functionality flag - disabled by default
+ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
+
+# Conditionally import memory modules only if enabled
+if ENABLE_MEMORY:
+    from chroma_memory import get_memory, search_memory_tool
+    print("Memory functionality enabled")
+else:
+    print("Memory functionality disabled")
 
 # Import Google GenAI for search capabilities
 try:
@@ -93,30 +102,17 @@ class ActionType(Enum):
     SAVE_TO_MEMORY = "SAVE_TO_MEMORY"
 
 
-class AssistantResponse(BaseModel):
-    """Assistant response indicating whether to act and the action details. Follow the user's instructions to do this."""
-
+class BaseAssistantResponse(BaseModel):
+    """Base assistant response for common fields."""
     thinking: str
     actionType: ActionType
-
     message: str = Field(
         ...,
         description="A short message to the user about what action was taken. Be extremely concise, since there is a 50 character limit.",
     )
     content_for_clipboard: Optional[str] = None
     meme_top_text: Optional[str] = Field(None, description="Top text for the meme")
-    meme_bottom_text: Optional[str]     = Field(
-        None, description="Bottom text for the meme"
-    )
-    memory_search_query: Optional[str] = Field(
-        None, description="Query to search memory when action is SEARCH_MEMORY"
-    )
-    memory_save_content: Optional[str] = Field(
-        None, description="Content to save to memory when action is SAVE_TO_MEMORY"
-    )
-    memory_save_type: Optional[str] = Field(
-        None, description="Type of memory entry to save (e.g., 'important_info', 'preference', 'note', 'reminder')"
-    )
+    meme_bottom_text: Optional[str] = Field(None, description="Bottom text for the meme")
     
     @field_validator('actionType', mode='before')
     @classmethod
@@ -131,11 +127,128 @@ class AssistantResponse(BaseModel):
             raise ValueError(f"Invalid actionType: {v}. Must be one of: {valid_values}")
         return v
 
+class AssistantResponseWithMemory(BaseAssistantResponse):
+    """Assistant response with memory capabilities."""
+    memory_search_query: Optional[str] = Field(
+        None, description="Query to search memory when action is SEARCH_MEMORY"
+    )
+    memory_save_content: Optional[str] = Field(
+        None, description="Content to save to memory when action is SAVE_TO_MEMORY"
+    )
+    memory_save_type: Optional[str] = Field(
+        None, description="Type of memory entry to save (e.g., 'important_info', 'preference', 'note', 'reminder')"
+    )
+
+# Use the appropriate response model based on memory setting
+AssistantResponse = AssistantResponseWithMemory if ENABLE_MEMORY else BaseAssistantResponse
+
 
 hotword = "tango"
 
 
 def on_hotword_detected(text, audio):
+    if ENABLE_MEMORY:
+        # Full memory-enabled version
+        return on_hotword_detected_with_memory(text, audio)
+    else:
+        # Simplified version without memory
+        return on_hotword_detected_simple(text, audio)
+
+def on_hotword_detected_simple(text, audio):
+    """Simplified version without memory functionality."""
+    # Get current clipboard content
+    clipboard_data = monitor.get_last()
+    if clipboard_data is None:
+        clipboard_str = "Empty"
+    else:
+        clipboard_data_type, clipboard_content = clipboard_data
+        clipboard_str = f"Type: {clipboard_data_type}, Content: {str(clipboard_content)[:200]}..." if clipboard_content else "Empty"
+    
+    # Build simple prompt
+    prompt = f"Voice Command: {text}"
+    prompt += "\n\n"
+    prompt += "Clipboard Content:\n"
+    prompt += clipboard_str
+
+    try:
+        chat_completion = client_config["instructor"].chat.completions.create(
+            model=client_config["model"],
+            response_model=AssistantResponse,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""You are {hotword}, a voice assistant that responds to commands. You help manage clipboard content.
+
+ACTIONS AVAILABLE:
+- COPY_TEXT_TO_CLIPBOARD: Copy specific text to clipboard (most common action)
+- MAKE_MEME: Create meme from clipboard image with top/bottom text  
+- SHORT_REPLY: Just notify user with a message
+- NO_ACTION: When no action is needed
+
+INSTRUCTIONS:
+- Focus on helping with clipboard content
+- If user asks to convert data formats, do it in full without truncating
+- Keep messages under 50 characters for notifications
+- Be concise and helpful
+"""
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+    except Exception as e:
+        print(f"Error during response generation: {e}")
+        # Create a fallback response
+        chat_completion = AssistantResponse(
+            thinking="Error occurred during response generation",
+            actionType=ActionType.SHORT_REPLY,
+            message="Sorry, I encountered an error processing your request."
+        )
+
+    print(f"Response: {chat_completion}")
+
+    # Handle the different action types
+    if chat_completion.actionType == ActionType.NO_ACTION:
+        if chat_completion.message:
+            notifier.simple_notify(message=chat_completion.message)
+        print("No action needed.")
+        return
+
+    if (chat_completion.actionType == ActionType.COPY_TEXT_TO_CLIPBOARD 
+        and chat_completion.content_for_clipboard):
+        monitor.copy_text(chat_completion.content_for_clipboard)
+        print("Clipboard updated.")
+        notifier.simple_notify(message=chat_completion.message)
+        return
+
+    if chat_completion.actionType == ActionType.MAKE_MEME:
+        # Handle meme creation
+        print("Creating meme...")
+        clipboard_data = monitor.get_last()
+        if clipboard_data is None:
+            print("No clipboard data found to create a meme.")
+            return
+        data_type, value = clipboard_data
+        if data_type is None or value is None or data_type != "image":
+            print("No image found in clipboard to create a meme.")
+            return
+        from meme import make_meme
+
+        meme_image = make_meme(
+            value,
+            upper_text=chat_completion.meme_top_text or "",
+            lower_text=chat_completion.meme_bottom_text or "",
+        )
+        monitor.copy_image(meme_image)
+        print("Meme created and copied to clipboard.")
+        notifier.simple_notify(message=chat_completion.message)
+        return
+
+    if chat_completion.actionType == ActionType.SHORT_REPLY:
+        if chat_completion.message:
+            notifier.simple_notify(message=chat_completion.message)
+        return
+
+def on_hotword_detected_with_memory(text, audio):
     # Get memory system instance
     memory = get_memory()
     
