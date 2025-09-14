@@ -8,14 +8,64 @@ from typing import Optional
 import time
 import os
 import instructor
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import subprocess
 from pymacnotifier import MacNotifier
 
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-groq_client = instructor.from_provider(
-    "groq/gpt-oss-120b", api_key=os.getenv("GROQ_API_KEY")
-)
+# Import Google GenAI for search capabilities
+try:
+    from google import genai
+    from google.genai import types
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
+    print("google-genai not available, search functionality will be disabled")
+
+# Environment variable for model provider
+MODEL_PROVIDER = os.getenv("MODEL_PROVIDER", "groq").lower()
+
+def create_client():
+    """Create the appropriate client based on MODEL_PROVIDER environment variable."""
+    if MODEL_PROVIDER == "gemini":
+        try:
+            if GENAI_AVAILABLE:
+                # Create native GenAI client for search capabilities
+                native_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+                
+                # Create instructor client for structured outputs
+                instructor_client = instructor.from_provider(
+                    "google/gemini-2.5-flash-lite",
+                    api_key=os.getenv("GEMINI_API_KEY")
+                )
+                
+                return {
+                    "instructor": instructor_client,
+                    "native": native_client,
+                    "model": "gemini-2.5-flash-lite",
+                    "provider": "gemini"
+                }
+            else:
+                raise Exception("Google GenAI not available")
+        except Exception as e:
+            print(f"Failed to initialize Gemini client: {e}")
+            print("Falling back to Groq...")
+            # Fall back to Groq
+    
+    # Default to Groq
+    client = instructor.from_provider(
+        "groq/llama-3.3-70b-versatile", 
+        api_key=os.getenv("GROQ_API_KEY")
+    )
+    return {
+        "instructor": client,
+        "native": None,
+        "model": "llama-3.3-70b-versatile",
+        "provider": "groq"
+    }
+
+# Initialize client based on provider
+client_config = create_client()
+print(f"Using {client_config['provider']} provider with model: {client_config['model']}")
 
 monitor = ClipboardMonitor()
 monitor.start(log=True)
@@ -65,6 +115,19 @@ class AssistantResponse(BaseModel):
     memory_save_type: Optional[str] = Field(
         None, description="Type of memory entry to save (e.g., 'important_info', 'preference', 'note', 'reminder')"
     )
+    
+    @field_validator('actionType', mode='before')
+    @classmethod
+    def validate_action_type(cls, v):
+        if isinstance(v, str):
+            # Try to convert string to enum
+            for action in ActionType:
+                if action.value == v:
+                    return action
+            # If no match found, raise error with helpful message
+            valid_values = [action.value for action in ActionType]
+            raise ValueError(f"Invalid actionType: {v}. Must be one of: {valid_values}")
+        return v
 
 
 hotword = "tango"
@@ -97,16 +160,43 @@ def on_hotword_detected(text, audio):
     prompt += "Current Clipboard Content:\n"
     prompt += clipboard_str
     prompt += "\n\n"
-    prompt += "Relevant Previous Context:\n"
-    prompt += relevant_context
+    # prompt += "Relevant Previous Context:\n"
+    # prompt += relevant_context
 
-    chat_completion = groq_client.chat.completions.create(
-        model="qwen/qwen3-32b",  # or another available Groq model
-        response_model=AssistantResponse,
-        messages=[
-            {
-                "role": "system",
-                "content": f"""You are {hotword}, a voice assistant that responds to commands. You have access to several actions:
+    # Use appropriate client based on provider and search needs
+    if client_config["provider"] == "gemini" and client_config["native"]:
+        # For Gemini, try to use search first, then fall back to structured response
+        try:
+            # Check if the query might benefit from web search
+            search_keywords = ["current", "recent", "latest", "news", "today", "now", "update"]
+            should_search = any(keyword in text.lower() for keyword in search_keywords)
+            
+            if should_search:
+                # Use native client with search tool
+                grounding_tool = types.Tool(google_search=types.GoogleSearch())
+                config = types.GenerateContentConfig(tools=[grounding_tool])
+                
+                search_response = client_config["native"].models.generate_content(
+                    model=client_config["model"],
+                    contents=f"{prompt}\n\nUser Query: {text}",
+                    config=config,
+                )
+                
+                # If we got search results, use them in the structured response
+                if hasattr(search_response.candidates[0], 'grounding_metadata') and search_response.candidates[0].grounding_metadata:
+                    prompt += f"\n\nWeb Search Results: {search_response.text}"
+        except Exception as e:
+            print(f"Search failed, continuing with regular response: {e}")
+    
+    # Generate structured response
+    try:
+        chat_completion = client_config["instructor"].chat.completions.create(
+            model=client_config["model"],
+            response_model=AssistantResponse,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""You are {hotword}, a voice assistant that responds to commands. You have access to several actions:
 
 CURRENT CONTEXT: Use the provided current date/time to understand temporal references like "today", "tomorrow", "next week", "yesterday", etc.
 
@@ -126,16 +216,31 @@ MEMORY ACTIONS:
   * Example: "Find that email address I saved" → SEARCH_MEMORY with query "email address"
 
 OTHER ACTIONS:
-- COPY_TEXT_TO_CLIPBOARD: Copy specific text user requests
+- COPY_TEXT_TO_CLIPBOARD: Copy specific text user requests. This is your primary action for most commands, as the user will be asking you to help with their clipboard content.
 - MAKE_MEME: Create meme from clipboard image with top/bottom text
-- SHORT_REPLY: Just notify user with a message
-- NO_ACTION: When no action is needed
+- SHORT_REPLY: Just notify user with a message. Their clipboard remains unchanged.
 
-IMPORTANT: Look at the "Relevant Previous Context" to provide personalized responses based on past interactions. Use the current date/time to understand when things happened relative to now. Only respond with valid JSON matching the AssistantResponse schema.""",
-            },
-            {"role": "user", "content": prompt},
-        ],
-    )
+Use the current date/time to understand when things happened relative to now. Only respond with valid JSON matching the AssistantResponse schema.
+
+Remember that you are primariy interacting via short messages and by assisting the user with their clipboard content. There might be some noisey text from the voice recognition, so focus on the core intent of the command.
+""",
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+        
+        print(f"Raw response type: {type(chat_completion)}")
+        print(f"Raw response actionType: {chat_completion.actionType} (type: {type(chat_completion.actionType)})")
+        
+    except Exception as e:
+        print(f"Error during response generation: {e}")
+        print(f"Error type: {type(e)}")
+        # Create a fallback response
+        chat_completion = AssistantResponse(
+            thinking="Error occurred during response generation",
+            actionType=ActionType.SHORT_REPLY,
+            message="Sorry, I encountered an error processing your request."
+        )
 
     # Store the interaction in memory
     action_type_str = chat_completion.actionType.value if chat_completion.actionType else "UNKNOWN"
@@ -206,8 +311,8 @@ IMPORTANT: Look at the "Relevant Previous Context" to provide personalized respo
             follow_up_prompt += f"\n\nMemory Search Results:\n{search_results}"
             follow_up_prompt += f"\n\nPlease provide a helpful response based on the search results above. If the search results contain relevant information, use it to answer the user's question properly."
             
-            follow_up_completion = groq_client.chat.completions.create(
-                model="qwen/qwen3-32b",
+            follow_up_completion = client_config["instructor"].chat.completions.create(
+                model=client_config["model"],
                 response_model=AssistantResponse,
                 messages=[
                     {
