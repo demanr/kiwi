@@ -118,6 +118,6 @@ class MacNotifier:
         return self.notify(
             message=message,
             title=title,
-            sound=NotificationSound.DEFAULT,
+            sound=NotificationSound.FUNK,
             high_priority=True,
         )
