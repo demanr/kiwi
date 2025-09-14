@@ -112,7 +112,7 @@ class BaseAssistantResponse(BaseModel):
     )
     emoji: Optional[str] = Field(
         None,
-        description="An optional emotion based on the message. The options are angry, annoyed, excited, happy, love, sad, surprised, thinking, winking. Always use an emoji that matches the tone of the message.",
+        description="An optional emotion based on the message. The options are angry, annoyed, excited, happy, love, sad, surprised, thinking, winking. Always pick an emoji, try to match the tone of the message.",
     )
     content_for_clipboard: Optional[str] = None
     meme_top_text: Optional[str] = Field(None, description="Top text for the meme")
