@@ -10,6 +10,7 @@ import instructor
 from pydantic import BaseModel, Field, field_validator
 import subprocess
 from pymacnotifier import MacNotifier
+from bg_remove import remove_background
 
 # Memory functionality flag - disabled by default
 ENABLE_MEMORY = os.getenv("ENABLE_MEMORY", "false").lower() == "true"
@@ -98,6 +99,7 @@ class ActionType(Enum):
     SHORT_REPLY = "SHORT_REPLY"
     NO_ACTION = "NO_ACTION"
     MAKE_MEME = "MAKE_MEME"
+    REMOVE_BACKGROUND = "REMOVE_BACKGROUND"
     SEARCH_MEMORY = "SEARCH_MEMORY"
     SAVE_TO_MEMORY = "SAVE_TO_MEMORY"
 
@@ -186,6 +188,7 @@ def on_hotword_detected_simple(text, audio):
 ACTIONS AVAILABLE:
 - COPY_TEXT_TO_CLIPBOARD: Copy specific text to clipboard (most common action)
 - MAKE_MEME: Create meme from clipboard image with top/bottom text  
+- REMOVE_BACKGROUND: Remove background from clipboard image, making it transparent
 - SHORT_REPLY: Just notify user with a message
 - NO_ACTION: When no action is needed
 
@@ -244,6 +247,24 @@ INSTRUCTIONS:
         )
         monitor.copy_image(meme_image)
         print("Meme created and copied to clipboard.")
+        notifier.simple_notify(message=chat_completion.message)
+        return
+
+    if chat_completion.actionType == ActionType.REMOVE_BACKGROUND:
+        # Handle background removal
+        print("Removing background...")
+        clipboard_data = monitor.get_last()
+        if clipboard_data is None:
+            print("No clipboard data found to remove background from.")
+            return
+        data_type, value = clipboard_data
+        if data_type is None or value is None or data_type != "image":
+            print("No image found in clipboard to remove background from.")
+            return
+
+        bg_removed_image = remove_background(value)
+        monitor.copy_image(bg_removed_image)
+        print("Background removed and copied to clipboard.")
         notifier.simple_notify(message=chat_completion.message)
         return
 
@@ -337,6 +358,7 @@ MEMORY ACTIONS:
 OTHER ACTIONS:
 - COPY_TEXT_TO_CLIPBOARD: Copy specific text user requests. This is your primary action for most commands, as the user will be asking you to help with their clipboard content.
 - MAKE_MEME: Create meme from clipboard image with top/bottom text
+- REMOVE_BACKGROUND: Remove background from clipboard image, making it transparent
 - SHORT_REPLY: Just notify user with a message. Their clipboard remains unchanged.
 
 Use the current date/time to understand when things happened relative to now. Only respond with valid JSON matching the AssistantResponse schema.
@@ -414,6 +436,26 @@ Remember that you are primariy interacting via short messages and by assisting t
         )
         monitor.copy_image(meme_image)
         print("Meme created and copied to clipboard.")
+        notifier.simple_notify(
+            message=chat_completion.message, emotion=chat_completion.emoji
+        )
+        return
+
+    if chat_completion.actionType == ActionType.REMOVE_BACKGROUND:
+        # Handle background removal
+        print("Removing background...")
+        clipboard_data = monitor.get_last()
+        if clipboard_data is None:
+            print("No clipboard data found to remove background from.")
+            return
+        data_type, value = clipboard_data
+        if data_type is None or value is None or data_type != "image":
+            print("No image found in clipboard to remove background from.")
+            return
+
+        bg_removed_image = remove_background(value)
+        monitor.copy_image(bg_removed_image)
+        print("Background removed and copied to clipboard.")
         notifier.simple_notify(
             message=chat_completion.message, emotion=chat_completion.emoji
         )
